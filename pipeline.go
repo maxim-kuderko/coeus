@@ -95,6 +95,12 @@ func (p *Pipeline) processPool(output chan *events.Events, input chan *events.Ev
 }
 
 func (p *Pipeline) process(output, input chan *events.Events) {
+	if len(p.processors) == 0 {
+		for e := range input {
+			output <- e
+		}
+		return
+	}
 	var pipeline Processor
 	for _, proc := range p.processors {
 		if pipeline == nil {
@@ -106,9 +112,6 @@ func (p *Pipeline) process(output, input chan *events.Events) {
 		}
 		pipeline = tmp
 
-	}
-	if pipeline == nil {
-		return
 	}
 	for e := range pipeline(input) {
 		output <- e

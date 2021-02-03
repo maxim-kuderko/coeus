@@ -3,13 +3,14 @@ package drivers
 import (
 	"context"
 	"github.com/maxim-kuderko/coeus/events"
+	"go.uber.org/atomic"
 	"strconv"
 	"time"
 )
 
 type Stub struct {
 	n           int
-	outputCount int
+	outputCount atomic.Int32
 }
 
 func NewStub(n int) *Stub {
@@ -22,7 +23,7 @@ func (s *Stub) Store(events chan *events.Events) chan error {
 		defer close(errs)
 		for es := range events {
 			for range es.Data() {
-				s.outputCount++
+				s.outputCount.Add(1)
 			}
 			if err := es.Ack(); err != nil {
 				errs <- err
@@ -48,6 +49,6 @@ func (s *Stub) Next(ctx context.Context, n int, timeout time.Duration) (chan *ev
 	return output, errs
 }
 
-func (s *Stub) OutputCount() int {
-	return s.outputCount
+func (s *Stub) OutputCount() int32 {
+	return s.outputCount.Load()
 }

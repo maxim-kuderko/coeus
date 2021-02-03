@@ -30,6 +30,49 @@ func TestNewPipeline(t *testing.T) {
 					ConcurrentWorkers:    1,
 					ConcurrentOutputters: 1,
 				},
+				processors: nil,
+			},
+		},
+		{
+			name: `basic with processor`,
+			args: args{
+				stub: drivers.NewStub(count),
+				opt: &Opt{
+					BulkSize:             1,
+					BulkTimeout:          time.Second,
+					ConcurrentWorkers:    1,
+					ConcurrentOutputters: 1,
+				},
+				processors: []Processor{func(events chan *events.Events) chan *events.Events {
+					return events
+				}},
+			},
+		},
+		{
+			name: `concurrent with processor`,
+			args: args{
+				stub: drivers.NewStub(count),
+				opt: &Opt{
+					BulkSize:             1,
+					BulkTimeout:          time.Second,
+					ConcurrentWorkers:    20,
+					ConcurrentOutputters: 1,
+				},
+				processors: []Processor{func(events chan *events.Events) chan *events.Events {
+					return events
+				}},
+			},
+		},
+		{
+			name: `concurrent with processor with bulk`,
+			args: args{
+				stub: drivers.NewStub(count),
+				opt: &Opt{
+					BulkSize:             2,
+					BulkTimeout:          time.Second,
+					ConcurrentWorkers:    20,
+					ConcurrentOutputters: 2,
+				},
 				processors: []Processor{func(events chan *events.Events) chan *events.Events {
 					return events
 				}},
