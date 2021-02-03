@@ -4,12 +4,14 @@ import (
 	"context"
 	"github.com/maxim-kuderko/coeus/drivers"
 	"github.com/maxim-kuderko/coeus/events"
+	"runtime"
 	"testing"
 	"time"
 )
 
 func TestNewPipeline(t *testing.T) {
-	count := 100000
+	runtime.GOMAXPROCS(1000)
+	count := 1000000
 	type args struct {
 		stub       *drivers.Stub
 		opt        *Opt
@@ -55,7 +57,7 @@ func TestNewPipeline(t *testing.T) {
 				opt: &Opt{
 					BulkSize:             1,
 					BulkTimeout:          time.Second,
-					ConcurrentWorkers:    20,
+					ConcurrentWorkers:    2,
 					ConcurrentOutputters: 1,
 				},
 				processors: []Processor{func(events chan *events.Events) chan *events.Events {
@@ -70,8 +72,8 @@ func TestNewPipeline(t *testing.T) {
 				opt: &Opt{
 					BulkSize:             20,
 					BulkTimeout:          time.Second,
-					ConcurrentWorkers:    200,
-					ConcurrentOutputters: 20,
+					ConcurrentWorkers:    8,
+					ConcurrentOutputters: 8,
 				},
 				processors: []Processor{func(events chan *events.Events) chan *events.Events {
 					return events

@@ -4,13 +4,14 @@ import (
 	"context"
 	"github.com/maxim-kuderko/coeus/events"
 	"go.uber.org/atomic"
+	"math/rand"
 	"strconv"
 	"time"
 )
 
 type Stub struct {
 	n           int
-	outputCount atomic.Int32
+	outputCount [8]atomic.Int32
 }
 
 func NewStub(n int) *Stub {
@@ -23,7 +24,7 @@ func (s *Stub) Store(events chan *events.Events) chan error {
 		defer close(errs)
 		for es := range events {
 			for range es.Data() {
-				s.outputCount.Add(1)
+				s.outputCount[rand.Int()%8].Add(1)
 			}
 			if err := es.Ack(); err != nil {
 				errs <- err
@@ -50,5 +51,9 @@ func (s *Stub) Next(ctx context.Context, n int, timeout time.Duration) (chan *ev
 }
 
 func (s *Stub) OutputCount() int {
-	return int(s.outputCount.Load())
+	output := 0
+	for _, c := range s.outputCount {
+		output += int(c.Load())
+	}
+	return output
 }
