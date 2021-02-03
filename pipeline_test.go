@@ -2,6 +2,7 @@ package coeus
 
 import (
 	"context"
+	"crypto/md5"
 	"github.com/maxim-kuderko/coeus/drivers"
 	"github.com/maxim-kuderko/coeus/events"
 	"runtime"
@@ -11,7 +12,7 @@ import (
 
 func TestNewPipeline(t *testing.T) {
 	runtime.GOMAXPROCS(1000)
-	count := 1000000
+	count := 10000000
 	type args struct {
 		stub       *drivers.Stub
 		opt        *Opt
@@ -77,6 +78,62 @@ func TestNewPipeline(t *testing.T) {
 				},
 				processors: []Processor{func(events chan *events.Events) chan *events.Events {
 					return events
+				}},
+			},
+		},
+		{
+			name: `concurrent with processor with bulk and CPU intensive`,
+			args: args{
+				stub: drivers.NewStub(count),
+				opt: &Opt{
+					BulkSize:             1,
+					BulkTimeout:          time.Second,
+					ConcurrentWorkers:    16,
+					ConcurrentOutputters: 8,
+				},
+				processors: []Processor{func(e chan *events.Events) chan *events.Events {
+					tmp := make(chan *events.Events)
+					go func() {
+						defer close(tmp)
+						for es := range e {
+							for range es.Data() {
+								for i := 0; i < 100; i++ {
+									md5.New().Sum([]byte(`                                      `))
+								}
+							}
+							tmp <- es
+						}
+					}()
+
+					return tmp
+				}},
+			},
+		},
+		{
+			name: `serial with processor with bulk and CPU intensive`,
+			args: args{
+				stub: drivers.NewStub(count),
+				opt: &Opt{
+					BulkSize:             1,
+					BulkTimeout:          time.Second,
+					ConcurrentWorkers:    1,
+					ConcurrentOutputters: 1,
+				},
+				processors: []Processor{func(e chan *events.Events) chan *events.Events {
+					tmp := make(chan *events.Events)
+					go func() {
+						defer close(tmp)
+						for es := range e {
+							for range es.Data() {
+								for i := 0; i < 100; i++ {
+									md5.New().Sum([]byte(`                                      `))
+								}
+							}
+							tmp <- es
+						}
+					}()
+
+					return tmp
 				}},
 			},
 		},

@@ -2,7 +2,7 @@ package events
 
 type Event struct {
 	ID   string
-	Data []byte
+	Data interface{}
 }
 
 type Events struct {
