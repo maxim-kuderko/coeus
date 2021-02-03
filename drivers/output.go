@@ -8,6 +8,5 @@ func (o *OutputError) Error() string {
 }
 
 type Output interface {
-	Store(event chan *Event) chan error
-	BulkStore(events chan *Events) chan error
+	Store(events chan *Events) chan error
 }

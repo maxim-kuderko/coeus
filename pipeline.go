@@ -15,11 +15,10 @@ type Pipeline struct {
 
 	ctx context.Context
 }
-type Processor func(events chan *drivers.Event) chan *drivers.Event
-type MultiProcessor func(events chan *drivers.Events) chan *drivers.Events
+type Processor func(events chan *drivers.Events) chan *drivers.Events
 
 type Opt struct {
-	Bulk        bool
+	BulkSize    int
 	BulkTimeout time.Duration
 
 	ConcurrentWorkers    int
@@ -42,35 +41,39 @@ func NewPipeline(input drivers.Input, output drivers.Output, opt *Opt, processor
 }
 
 func (p *Pipeline) Run(ctx context.Context) chan error {
-	if p.opt.Bulk {
-		return p.bulkRun(ctx)
-	}
 	return p.run(ctx)
 }
 
 func (p *Pipeline) run(ctx context.Context) chan error {
-	input, errs := p.input.Next(ctx)
-	output := make(chan *drivers.Event)
-	go p.processPool(output, input)
-	go p.storePool(output)
+	errs := make(chan error, p.opt.ConcurrentWorkers+p.opt.ConcurrentOutputters)
+	input, inputErrs := p.input.Next(ctx, p.opt.BulkSize, p.opt.BulkTimeout)
+	go fanIn(errs, inputErrs)
+	output := make(chan *drivers.Events)
+	go func() {
+		defer close(output)
+		p.processPool(output, input)
+	}()
+	go func() {
+		defer close(errs)
+		p.storePool(output, errs)
+	}()
 	return errs
 }
 
-func (p *Pipeline) storePool(output chan *drivers.Event) {
+func (p *Pipeline) storePool(output chan *drivers.Events, errorsOutput chan error) {
 	wg := sync.WaitGroup{}
 	wg.Add(p.opt.ConcurrentOutputters)
 	for i := 0; i < p.opt.ConcurrentOutputters; i++ {
 		go func() {
 			wg.Done()
-			p.output.Store(output)
+			fanIn(errorsOutput, p.output.Store(output))
 		}()
 	}
 	wg.Wait()
 
 }
 
-func (p *Pipeline) processPool(output chan *drivers.Event, input chan *drivers.Event) {
-	defer close(output)
+func (p *Pipeline) processPool(output chan *drivers.Events, input chan *drivers.Events) {
 	wg := sync.WaitGroup{}
 	wg.Add(p.opt.ConcurrentWorkers)
 	for i := 0; i < p.opt.ConcurrentWorkers; i++ {
@@ -82,12 +85,19 @@ func (p *Pipeline) processPool(output chan *drivers.Event, input chan *drivers.E
 	wg.Wait()
 }
 
-func (p *Pipeline) bulkRun(ctx context.Context) chan error {
-
-}
-
-func (p *Pipeline) process(input, output chan *drivers.Event) chan *drivers.Events {
-
+func (p *Pipeline) process(input, output chan *drivers.Events) {
+	var pipeline Processor
+	for _, proc := range p.processors {
+		pipeline = func(events chan *drivers.Events) chan *drivers.Events {
+			return proc(events)
+		}
+	}
+	if pipeline == nil {
+		return
+	}
+	for e := range pipeline(input) {
+		output <- e
+	}
 }
 
 func validate(opt *Opt) (*Opt, error) {

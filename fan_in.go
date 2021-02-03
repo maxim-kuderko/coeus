@@ -1,4 +1,7 @@
 package coeus
 
-func fanIn(e ...chan interface{}) chan interface{} {
+func fanIn(output chan error, in chan error) {
+	for err := range in {
+		output <- err
+	}
 }

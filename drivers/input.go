@@ -13,6 +13,5 @@ func (i *InputError) Error() string {
 }
 
 type Input interface {
-	Next(ctx context.Context) (chan *Event, chan error)
-	BulkNext(ctx context.Context, n int, timeout time.Duration) (chan *Events, chan error)
+	Next(ctx context.Context, n int, timeout time.Duration) (chan *Events, chan error)
 }
