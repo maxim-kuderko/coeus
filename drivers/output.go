@@ -1,5 +1,9 @@
 package drivers
 
+import (
+	"github.com/maxim-kuderko/coeus/events"
+)
+
 type OutputError struct {
 }
 
@@ -8,5 +12,5 @@ func (o *OutputError) Error() string {
 }
 
 type Output interface {
-	Store(events chan *Events) chan error
+	Store(events chan *events.Events) chan error
 }

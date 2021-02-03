@@ -2,6 +2,7 @@ package drivers
 
 import (
 	"context"
+	"github.com/maxim-kuderko/coeus/events"
 	"time"
 )
 
@@ -13,5 +14,5 @@ func (i *InputError) Error() string {
 }
 
 type Input interface {
-	Next(ctx context.Context, n int, timeout time.Duration) (chan *Events, chan error)
+	Next(ctx context.Context, n int, timeout time.Duration) (chan *events.Events, chan error)
 }

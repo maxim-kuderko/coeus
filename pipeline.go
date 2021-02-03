@@ -3,6 +3,7 @@ package coeus
 import (
 	"context"
 	"github.com/maxim-kuderko/coeus/drivers"
+	"github.com/maxim-kuderko/coeus/events"
 	"sync"
 	"time"
 )
@@ -14,8 +15,10 @@ type Pipeline struct {
 	opt        *Opt
 
 	ctx context.Context
+
+	wg sync.WaitGroup
 }
-type Processor func(events chan *drivers.Events) chan *drivers.Events
+type Processor func(events chan *events.Events) chan *events.Events
 
 type Opt struct {
 	BulkSize    int
@@ -43,29 +46,35 @@ func NewPipeline(input drivers.Input, output drivers.Output, opt *Opt, processor
 func (p *Pipeline) Run(ctx context.Context) chan error {
 	return p.run(ctx)
 }
+func (p *Pipeline) Wait() {
+	p.wg.Wait()
+}
 
 func (p *Pipeline) run(ctx context.Context) chan error {
 	errs := make(chan error, p.opt.ConcurrentWorkers+p.opt.ConcurrentOutputters)
 	input, inputErrs := p.input.Next(ctx, p.opt.BulkSize, p.opt.BulkTimeout)
 	go fanIn(errs, inputErrs)
-	output := make(chan *drivers.Events)
+	output := make(chan *events.Events)
+	p.wg.Add(2)
 	go func() {
+		defer p.wg.Done()
 		defer close(output)
 		p.processPool(output, input)
 	}()
 	go func() {
+		defer p.wg.Done()
 		defer close(errs)
 		p.storePool(output, errs)
 	}()
 	return errs
 }
 
-func (p *Pipeline) storePool(output chan *drivers.Events, errorsOutput chan error) {
+func (p *Pipeline) storePool(output chan *events.Events, errorsOutput chan error) {
 	wg := sync.WaitGroup{}
 	wg.Add(p.opt.ConcurrentOutputters)
 	for i := 0; i < p.opt.ConcurrentOutputters; i++ {
 		go func() {
-			wg.Done()
+			defer wg.Done()
 			fanIn(errorsOutput, p.output.Store(output))
 		}()
 	}
@@ -73,24 +82,30 @@ func (p *Pipeline) storePool(output chan *drivers.Events, errorsOutput chan erro
 
 }
 
-func (p *Pipeline) processPool(output chan *drivers.Events, input chan *drivers.Events) {
+func (p *Pipeline) processPool(output chan *events.Events, input chan *events.Events) {
 	wg := sync.WaitGroup{}
 	wg.Add(p.opt.ConcurrentWorkers)
 	for i := 0; i < p.opt.ConcurrentWorkers; i++ {
 		go func() {
-			wg.Done()
-			p.process(input, output)
+			defer wg.Done()
+			p.process(output, input)
 		}()
 	}
 	wg.Wait()
 }
 
-func (p *Pipeline) process(input, output chan *drivers.Events) {
+func (p *Pipeline) process(output, input chan *events.Events) {
 	var pipeline Processor
 	for _, proc := range p.processors {
-		pipeline = func(events chan *drivers.Events) chan *drivers.Events {
-			return proc(events)
+		if pipeline == nil {
+			pipeline = proc
+			continue
 		}
+		tmp := func(events chan *events.Events) chan *events.Events {
+			return proc(pipeline(events))
+		}
+		pipeline = tmp
+
 	}
 	if pipeline == nil {
 		return
