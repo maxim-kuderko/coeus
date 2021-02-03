@@ -5,8 +5,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sqs"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/maxim-kuderko/coeus/events"
-	"sync"
 	"time"
 )
 
@@ -52,7 +52,6 @@ func (s *Sqs) Next(ctx context.Context, n int, timeout time.Duration) (chan *eve
 				msgsAckIds := make([]*sqs.DeleteMessageBatchRequestEntry, 0, len(resp.Messages))
 				for _, e := range resp.Messages {
 					es = append(es, &events.Event{
-						ID:   *e.MessageId,
 						Data: []byte(*e.Body),
 					})
 					msgsAckIds = append(msgsAckIds, &sqs.DeleteMessageBatchRequestEntry{
@@ -76,12 +75,39 @@ func (s *Sqs) Next(ctx context.Context, n int, timeout time.Duration) (chan *eve
 	return output, errs
 }
 
-type sqsAcker struct {
-	sqs   *sqs.SQS
-	errs  chan error
-	queue *string
-
-	buff []*sqs.DeleteMessageBatchRequestEntry
-
-	mu sync.Mutex
+func (s *Sqs) Store(events chan *events.Events) chan error {
+	errs := make(chan error)
+	go func() {
+		defer close(errs)
+		for e := range events {
+			payloads := make([]*sqs.SendMessageBatchRequestEntry, 0, len(e.Data()))
+			for _, d := range e.Data() {
+				var data *string
+				switch v := d.Data.(type) {
+				case []byte:
+					data = aws.String(string(v))
+				case string:
+					data = aws.String(v)
+				default:
+					b, err := jsoniter.ConfigFastest.Marshal(v)
+					if err != nil {
+						errs <- err
+						continue
+					}
+					data = aws.String(string(b))
+				}
+				payloads = append(payloads, &sqs.SendMessageBatchRequestEntry{
+					MessageBody: data,
+				})
+			}
+			_, err := s.client.SendMessageBatch(&sqs.SendMessageBatchInput{
+				Entries:  payloads,
+				QueueUrl: aws.String(s.opt.Endpoint),
+			})
+			if err != nil {
+				errs <- err
+			}
+		}
+	}()
+	return errs
 }
