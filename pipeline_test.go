@@ -9,7 +9,7 @@ import (
 )
 
 func TestNewPipeline(t *testing.T) {
-	count := 1000
+	count := 100000
 	type args struct {
 		stub       *drivers.Stub
 		opt        *Opt
@@ -68,10 +68,10 @@ func TestNewPipeline(t *testing.T) {
 			args: args{
 				stub: drivers.NewStub(count),
 				opt: &Opt{
-					BulkSize:             2,
+					BulkSize:             20,
 					BulkTimeout:          time.Second,
-					ConcurrentWorkers:    20,
-					ConcurrentOutputters: 2,
+					ConcurrentWorkers:    200,
+					ConcurrentOutputters: 20,
 				},
 				processors: []Processor{func(events chan *events.Events) chan *events.Events {
 					return events
@@ -84,7 +84,7 @@ func TestNewPipeline(t *testing.T) {
 			pipeline, _ := NewPipeline(tt.args.stub, tt.args.stub, tt.args.opt, tt.args.processors...)
 			pipeline.Run(context.Background())
 			pipeline.Wait()
-			if tt.args.stub.OutputCount() != 1000 {
+			if tt.args.stub.OutputCount() != count {
 				t.Errorf(`expected 1000 count, got %d`, tt.args.stub.OutputCount())
 			}
 		})

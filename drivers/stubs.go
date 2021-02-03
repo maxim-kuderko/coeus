@@ -49,6 +49,6 @@ func (s *Stub) Next(ctx context.Context, n int, timeout time.Duration) (chan *ev
 	return output, errs
 }
 
-func (s *Stub) OutputCount() int32 {
-	return s.outputCount.Load()
+func (s *Stub) OutputCount() int {
+	return int(s.outputCount.Load())
 }
