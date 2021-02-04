@@ -1,7 +1,6 @@
 package coeus
 
 import (
-	"fmt"
 	"github.com/maxim-kuderko/coeus/Io"
 	"github.com/maxim-kuderko/coeus/events"
 	"github.com/maxim-kuderko/coeus/processors"
@@ -69,6 +68,36 @@ func TestPipeline_Run(t *testing.T) {
 				output: st.Output,
 			},
 		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &Pipeline{
+				input:      tt.fields.input,
+				processors: tt.fields.processors,
+				output:     tt.fields.output,
+			}
+			p.Run()
+			if st.OutputCount() != n {
+				t.Errorf(`wrong count want %d got %d`, n, st.OutputCount())
+			}
+			st.Reset()
+		})
+	}
+}
+func TestPipeline_RunAggSum(t *testing.T) {
+	n := 10000
+	type fields struct {
+		input        Io.Input
+		processors   [][]processors.Processor
+		output       Io.Output
+		outputNumber int64
+	}
+	st := Io.NewStub(n)
+	tests := []struct {
+		name   string
+		fields fields
+	}{
 		{
 			name: `basic sum`,
 			fields: fields{
@@ -78,23 +107,147 @@ func TestPipeline_Run(t *testing.T) {
 						processors.Sum(func(events2 *events.Events) int64 {
 							output := int64(0)
 							for _, es := range events2.Data() {
-								output += int64(es.Data.(int))
+								output += es.Data.(int64)
+							}
+							return output
+						}),
+					},
+				},
+				output:       st.Output,
+				outputNumber: int64(n * (0 + (n - 1)) / 2),
+			},
+		},
+		{
+			name: `basic concurrent sum`,
+			fields: fields{
+				input: st.Input,
+				processors: [][]processors.Processor{
+					{
+						processors.Sum(func(events2 *events.Events) int64 {
+							output := int64(0)
+							for _, es := range events2.Data() {
+								output += es.Data.(int64)
 							}
 							return output
 						}),
 						processors.Sum(func(events2 *events.Events) int64 {
 							output := int64(0)
 							for _, es := range events2.Data() {
-								output += int64(es.Data.(int))
+								output += es.Data.(int64)
+							}
+							return output
+						}),
+						processors.Sum(func(events2 *events.Events) int64 {
+							output := int64(0)
+							for _, es := range events2.Data() {
+								output += es.Data.(int64)
+							}
+							return output
+						}),
+						processors.Sum(func(events2 *events.Events) int64 {
+							output := int64(0)
+							for _, es := range events2.Data() {
+								output += es.Data.(int64)
+							}
+							return output
+						}),
+						processors.Sum(func(events2 *events.Events) int64 {
+							output := int64(0)
+							for _, es := range events2.Data() {
+								output += es.Data.(int64)
+							}
+							return output
+						}),
+					},
+				},
+				output:       st.Output,
+				outputNumber: int64(n * (0 + (n - 1)) / 2),
+			},
+		},
+		{
+			name: `multistage sum`,
+			fields: fields{
+				input: st.Input,
+				processors: [][]processors.Processor{
+					{
+						processors.Sum(func(events2 *events.Events) int64 {
+							output := int64(0)
+							for _, es := range events2.Data() {
+								output += es.Data.(int64)
 							}
 							return output
 						}),
 					},
 					{
-						processors.Stub,
+						processors.Sum(func(events2 *events.Events) int64 {
+							output := int64(0)
+							for _, es := range events2.Data() {
+								output += es.Data.(int64)
+							}
+							return output
+						}),
 					},
 				},
-				output: st.Output,
+				output:       st.Output,
+				outputNumber: int64(n * (0 + (n - 1)) / 2),
+			},
+		},
+		{
+			name: `multistage concurrent sum`,
+			fields: fields{
+				input: st.Input,
+				processors: [][]processors.Processor{
+					{
+						processors.Sum(func(events2 *events.Events) int64 {
+							output := int64(0)
+							for _, es := range events2.Data() {
+								output += es.Data.(int64)
+							}
+							return output
+						}),
+						processors.Sum(func(events2 *events.Events) int64 {
+							output := int64(0)
+							for _, es := range events2.Data() {
+								output += es.Data.(int64)
+							}
+							return output
+						}),
+						processors.Sum(func(events2 *events.Events) int64 {
+							output := int64(0)
+							for _, es := range events2.Data() {
+								output += es.Data.(int64)
+							}
+							return output
+						}),
+					},
+					{
+						processors.Sum(func(events2 *events.Events) int64 {
+							output := int64(0)
+							for _, es := range events2.Data() {
+								output += es.Data.(int64)
+							}
+							return output
+						}),
+						processors.Sum(func(events2 *events.Events) int64 {
+							output := int64(0)
+							for _, es := range events2.Data() {
+								output += es.Data.(int64)
+							}
+							return output
+						}),
+					},
+					{
+						processors.Sum(func(events2 *events.Events) int64 {
+							output := int64(0)
+							for _, es := range events2.Data() {
+								output += es.Data.(int64)
+							}
+							return output
+						}),
+					},
+				},
+				output:       st.Output,
+				outputNumber: int64(n * (0 + (n - 1)) / 2),
 			},
 		},
 	}
@@ -107,7 +260,15 @@ func TestPipeline_Run(t *testing.T) {
 				output:     tt.fields.output,
 			}
 			p.Run()
-			fmt.Println(st.OutputCount())
+			result := int64(0)
+
+			for _, e := range st.OutputEvents() {
+				result += e.Data.(int64)
+			}
+			if result != tt.fields.outputNumber {
+				t.Errorf(`wrong count want %d got %d`, tt.fields.outputNumber, result)
+			}
+			st.Reset()
 		})
 	}
 }

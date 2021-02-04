@@ -2,22 +2,25 @@ package Io
 
 import (
 	"github.com/maxim-kuderko/coeus/events"
-	"go.uber.org/atomic"
+	"sync"
 )
 
 type Stub struct {
-	n           int
-	outputCount atomic.Int64
+	n      int
+	output []*events.Event
+	mu     sync.Mutex
 }
 
 func NewStub(n int) *Stub {
-	return &Stub{n: n}
+	return &Stub{n: n, output: make([]*events.Event, 0)}
 }
 
 func (s *Stub) Output(events chan *events.Events) {
 	for es := range events {
-		for range es.Data() {
-			s.outputCount.Add(1)
+		for _, e := range es.Data() {
+			s.mu.Lock()
+			s.output = append(s.output, e)
+			s.mu.Unlock()
 		}
 		es.Ack()
 	}
@@ -31,13 +34,21 @@ func (s *Stub) Input() chan *events.Events {
 			output <- events.NewEvents(func() error {
 				return nil
 			}, []*events.Event{
-				{Data: i},
+				{Data: int64(i)},
 			})
 		}
 	}()
 	return output
 }
 
-func (s *Stub) OutputCount() int64 {
-	return s.outputCount.Load()
+func (s *Stub) OutputCount() int {
+	return len(s.output)
+}
+
+func (s *Stub) OutputEvents() []*events.Event {
+	return s.output
+}
+
+func (s *Stub) Reset() {
+	s.output = make([]*events.Event, 0)
 }
