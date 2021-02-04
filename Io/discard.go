@@ -1,4 +1,4 @@
-package drivers
+package Io
 
 import (
 	"github.com/maxim-kuderko/coeus/events"
@@ -11,7 +11,10 @@ func (d *Discard) Store(events chan *events.Events) chan error {
 	errs := make(chan error)
 	go func() {
 		defer close(errs)
-		for range events {
+		for e := range events {
+			if err := e.Ack(); err != nil {
+				errs <- err
+			}
 		}
 	}()
 	return errs

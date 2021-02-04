@@ -1,4 +1,4 @@
-package drivers
+package Io
 
 import (
 	"context"
@@ -105,6 +105,10 @@ func (s *Sqs) Store(events chan *events.Events) chan error {
 				QueueUrl: aws.String(s.opt.Endpoint),
 			})
 			if err != nil {
+				errs <- err
+				continue
+			}
+			if err = e.Ack(); err != nil {
 				errs <- err
 			}
 		}

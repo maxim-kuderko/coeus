@@ -1,123 +1,39 @@
 package coeus
 
 import (
-	"context"
-	"github.com/maxim-kuderko/coeus/drivers"
+	"github.com/maxim-kuderko/coeus/Io"
 	"github.com/maxim-kuderko/coeus/events"
-	"sync"
-	"time"
+	"github.com/maxim-kuderko/coeus/processors"
 )
 
 type Pipeline struct {
-	input      drivers.Input
-	output     drivers.Output
-	processors []Processor
-	opt        *Opt
-
-	ctx context.Context
-
-	wg sync.WaitGroup
-}
-type Processor func(events chan *events.Events) chan *events.Events
-
-type Opt struct {
-	BulkSize    int
-	BulkTimeout time.Duration
-
-	ConcurrentWorkers    int
-	ConcurrentOutputters int
+	input      Io.Input
+	processors [][]processors.Processor
+	output     Io.Output
 }
 
-func NewPipeline(input drivers.Input, output drivers.Output, opt *Opt, processors ...Processor) (*Pipeline, error) {
-	opt, err := validate(opt)
-	if err != nil {
-		return nil, err
-	}
-
+func NewPipeline(input Io.Input, processors [][]processors.Processor, output Io.Output) (*Pipeline, error) {
 	p := &Pipeline{
 		input:      input,
 		output:     output,
 		processors: processors,
-		opt:        opt,
 	}
 	return p, nil
 }
 
-func (p *Pipeline) Run(ctx context.Context) chan error {
-	return p.run(ctx)
-}
-func (p *Pipeline) Wait() {
-	p.wg.Wait()
-}
-
-func (p *Pipeline) run(ctx context.Context) chan error {
-	errs := make(chan error, p.opt.ConcurrentWorkers+p.opt.ConcurrentOutputters)
-	input, inputErrs := p.input.Next(ctx, p.opt.BulkSize, p.opt.BulkTimeout)
-	go fanIn(errs, inputErrs)
-	output := make(chan *events.Events)
-	p.wg.Add(2)
-	go func() {
-		defer p.wg.Done()
-		defer close(output)
-		p.processPool(output, input)
-	}()
-	go func() {
-		defer p.wg.Done()
-		defer close(errs)
-		p.storePool(output, errs)
-	}()
-	return errs
-}
-
-func (p *Pipeline) storePool(output chan *events.Events, errorsOutput chan error) {
-	wg := sync.WaitGroup{}
-	wg.Add(p.opt.ConcurrentOutputters)
-	for i := 0; i < p.opt.ConcurrentOutputters; i++ {
-		go func() {
-			defer wg.Done()
-			fanIn(errorsOutput, p.output.Store(output))
-		}()
-	}
-	wg.Wait()
-
-}
-
-func (p *Pipeline) processPool(output chan *events.Events, input chan *events.Events) {
-	wg := sync.WaitGroup{}
-	wg.Add(p.opt.ConcurrentWorkers)
-	for i := 0; i < p.opt.ConcurrentWorkers; i++ {
-		go func() {
-			defer wg.Done()
-			p.process(output, input)
-		}()
-	}
-	wg.Wait()
-}
-
-func (p *Pipeline) process(output, input chan *events.Events) {
-	if len(p.processors) == 0 {
-		for e := range input {
-			output <- e
+func (p *Pipeline) Run() {
+	input := p.input()
+	for _, procGroup := range p.processors {
+		output := make(chan *events.Events, len(procGroup)*2)
+		tmp := make([]chan *events.Events, 0, len(procGroup))
+		for _, proc := range procGroup {
+			tmp = append(tmp, proc(input))
 		}
-		return
+		go func(output chan *events.Events, tmp []chan *events.Events) {
+			defer close(output)
+			fanIn(output, tmp...)
+		}(output, tmp)
+		input = output
 	}
-	var pipeline Processor
-	for _, proc := range p.processors {
-		if pipeline == nil {
-			pipeline = proc
-			continue
-		}
-		tmp := func(events chan *events.Events) chan *events.Events {
-			return proc(pipeline(events))
-		}
-		pipeline = tmp
-
-	}
-	for e := range pipeline(input) {
-		output <- e
-	}
-}
-
-func validate(opt *Opt) (*Opt, error) {
-	return opt, nil
+	p.output(input)
 }

@@ -1,151 +1,113 @@
 package coeus
 
 import (
-	"context"
-	"crypto/md5"
-	"github.com/maxim-kuderko/coeus/drivers"
+	"fmt"
+	"github.com/maxim-kuderko/coeus/Io"
 	"github.com/maxim-kuderko/coeus/events"
-	"runtime"
+	"github.com/maxim-kuderko/coeus/processors"
 	"testing"
-	"time"
 )
 
-func TestNewPipeline(t *testing.T) {
-	runtime.GOMAXPROCS(1000)
-	count := 10000000
-	type args struct {
-		stub       *drivers.Stub
-		opt        *Opt
-		processors []Processor
+func TestPipeline_Run(t *testing.T) {
+	n := 10000
+	type fields struct {
+		input      Io.Input
+		processors [][]processors.Processor
+		output     Io.Output
 	}
+	st := Io.NewStub(n)
 	tests := []struct {
-		name string
-		args args
-		want int
+		name   string
+		fields fields
 	}{
 		{
 			name: `basic`,
-			args: args{
-				stub: drivers.NewStub(count),
-				opt: &Opt{
-					BulkSize:             1,
-					BulkTimeout:          time.Second,
-					ConcurrentWorkers:    1,
-					ConcurrentOutputters: 1,
+			fields: fields{
+				input: st.Input,
+				processors: [][]processors.Processor{
+					{
+						processors.Stub,
+					},
 				},
-				processors: nil,
+				output: st.Output,
 			},
 		},
 		{
-			name: `basic with processor`,
-			args: args{
-				stub: drivers.NewStub(count),
-				opt: &Opt{
-					BulkSize:             1,
-					BulkTimeout:          time.Second,
-					ConcurrentWorkers:    1,
-					ConcurrentOutputters: 1,
+			name: `basic mutli proc`,
+			fields: fields{
+				input: st.Input,
+				processors: [][]processors.Processor{
+					{
+						processors.Stub,
+						processors.Stub,
+						processors.Stub,
+						processors.Stub,
+					},
 				},
-				processors: []Processor{func(events chan *events.Events) chan *events.Events {
-					return events
-				}},
+				output: st.Output,
 			},
 		},
 		{
-			name: `concurrent with processor`,
-			args: args{
-				stub: drivers.NewStub(count),
-				opt: &Opt{
-					BulkSize:             1,
-					BulkTimeout:          time.Second,
-					ConcurrentWorkers:    2,
-					ConcurrentOutputters: 1,
-				},
-				processors: []Processor{func(events chan *events.Events) chan *events.Events {
-					return events
-				}},
-			},
-		},
-		{
-			name: `concurrent with processor with bulk`,
-			args: args{
-				stub: drivers.NewStub(count),
-				opt: &Opt{
-					BulkSize:             20,
-					BulkTimeout:          time.Second,
-					ConcurrentWorkers:    8,
-					ConcurrentOutputters: 8,
-				},
-				processors: []Processor{func(events chan *events.Events) chan *events.Events {
-					return events
-				}},
-			},
-		},
-		{
-			name: `concurrent with processor with bulk and CPU intensive`,
-			args: args{
-				stub: drivers.NewStub(count),
-				opt: &Opt{
-					BulkSize:             1,
-					BulkTimeout:          time.Second,
-					ConcurrentWorkers:    16,
-					ConcurrentOutputters: 8,
-				},
-				processors: []Processor{func(e chan *events.Events) chan *events.Events {
-					tmp := make(chan *events.Events)
-					go func() {
-						defer close(tmp)
-						for es := range e {
-							for range es.Data() {
-								for i := 0; i < 100; i++ {
-									md5.New().Sum([]byte(`                                      `))
-								}
-							}
-							tmp <- es
-						}
-					}()
+			name: `basic multi mutli proc`,
+			fields: fields{
+				input: st.Input,
+				processors: [][]processors.Processor{
+					{
+						processors.Stub,
+						processors.Stub,
+						processors.Stub,
+					},
+					{
+						processors.Stub,
+						processors.Stub,
+					},
 
-					return tmp
-				}},
+					{
+						processors.Stub,
+					},
+				},
+				output: st.Output,
 			},
 		},
 		{
-			name: `serial with processor with bulk and CPU intensive`,
-			args: args{
-				stub: drivers.NewStub(count),
-				opt: &Opt{
-					BulkSize:             1,
-					BulkTimeout:          time.Second,
-					ConcurrentWorkers:    1,
-					ConcurrentOutputters: 1,
-				},
-				processors: []Processor{func(e chan *events.Events) chan *events.Events {
-					tmp := make(chan *events.Events)
-					go func() {
-						defer close(tmp)
-						for es := range e {
-							for range es.Data() {
-								for i := 0; i < 100; i++ {
-									md5.New().Sum([]byte(`                                      `))
-								}
+			name: `basic sum`,
+			fields: fields{
+				input: st.Input,
+				processors: [][]processors.Processor{
+					{
+						processors.Sum(func(events2 *events.Events) int64 {
+							output := int64(0)
+							for _, es := range events2.Data() {
+								output += int64(es.Data.(int))
 							}
-							tmp <- es
-						}
-					}()
-
-					return tmp
-				}},
+							return output
+						}),
+						processors.Sum(func(events2 *events.Events) int64 {
+							output := int64(0)
+							for _, es := range events2.Data() {
+								output += int64(es.Data.(int))
+							}
+							return output
+						}),
+					},
+					{
+						processors.Stub,
+					},
+				},
+				output: st.Output,
 			},
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			pipeline, _ := NewPipeline(tt.args.stub, tt.args.stub, tt.args.opt, tt.args.processors...)
-			pipeline.Run(context.Background())
-			pipeline.Wait()
-			if tt.args.stub.OutputCount() != count {
-				t.Errorf(`expected 1000 count, got %d`, tt.args.stub.OutputCount())
+			p := &Pipeline{
+				input:      tt.fields.input,
+				processors: tt.fields.processors,
+				output:     tt.fields.output,
 			}
+			p.Run()
+			fmt.Println(st.OutputCount())
 		})
 	}
 }
