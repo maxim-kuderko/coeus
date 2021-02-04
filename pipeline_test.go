@@ -8,7 +8,7 @@ import (
 )
 
 func TestPipeline_Run(t *testing.T) {
-	n := 10000
+	n := 1000000
 	type fields struct {
 		input      Io.Input
 		processors [][]processors.Processor
