@@ -7,15 +7,22 @@ import (
 func Count(counter func(events2 *events.Events) int64) func(es chan *events.Events) chan *events.Events {
 	return func(es chan *events.Events) chan *events.Events {
 		output := make(chan *events.Events)
-		count := int64(0)
+		sum := int64(0)
 		go func() {
 			defer close(output)
+			acks := make([]func() error, 0)
 			for e := range es {
-				count += counter(e)
+				sum += counter(e)
+				acks = append(acks, e.Ack)
 			}
 			output <- events.NewEvents(func() error {
+				for _, ack := range acks {
+					if err := ack(); err != nil {
+						return err
+					}
+				}
 				return nil
-			}, []*events.Event{{Data: count}})
+			}, []*events.Event{{Data: sum}})
 		}()
 		return output
 	}
