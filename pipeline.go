@@ -12,13 +12,13 @@ type Pipeline struct {
 	output     Io.Output
 }
 
-func NewPipeline(input Io.Input, processors [][]processors.Processor, output Io.Output) (*Pipeline, error) {
+func NewPipeline(input Io.Input, processors [][]processors.Processor, output Io.Output) *Pipeline {
 	p := &Pipeline{
 		input:      input,
 		output:     output,
 		processors: processors,
 	}
-	return p, nil
+	return p
 }
 
 func (p *Pipeline) Run() {
@@ -29,11 +29,11 @@ func (p *Pipeline) Run() {
 		for _, proc := range procGroup {
 			tmp = append(tmp, proc(input))
 		}
-		go func(output chan *events.Events, tmp []chan *events.Events) {
-			defer close(output)
-			fanIn(output, tmp...)
-		}(output, tmp)
 		input = output
+		go func(o chan *events.Events, t []chan *events.Events) {
+			defer close(o)
+			fanIn(o, t...)
+		}(output, tmp)
 	}
 	p.output(input)
 }

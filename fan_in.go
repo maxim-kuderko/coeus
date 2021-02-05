@@ -9,10 +9,10 @@ func fanIn(output chan *events.Events, in ...chan *events.Events) {
 	wg := sync.WaitGroup{}
 	wg.Add(len(in))
 	for _, es := range in {
-		go func(es chan *events.Events) {
+		go func(e chan *events.Events) {
 			defer wg.Done()
-			for e := range es {
-				output <- e
+			for event := range e {
+				output <- event
 			}
 		}(es)
 	}

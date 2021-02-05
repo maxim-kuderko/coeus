@@ -104,7 +104,7 @@ func TestPipeline_RunAggSum(t *testing.T) {
 				input: st.Input,
 				processors: [][]processors.Processor{
 					{
-						processors.Sum(func(events2 *events.Events) int64 {
+						processors.Sum(func(events2 events.Events) int64 {
 							output := int64(0)
 							for _, es := range events2.Data() {
 								output += es.Data.(int64)
@@ -123,35 +123,35 @@ func TestPipeline_RunAggSum(t *testing.T) {
 				input: st.Input,
 				processors: [][]processors.Processor{
 					{
-						processors.Sum(func(events2 *events.Events) int64 {
+						processors.Sum(func(events2 events.Events) int64 {
 							output := int64(0)
 							for _, es := range events2.Data() {
 								output += es.Data.(int64)
 							}
 							return output
 						}),
-						processors.Sum(func(events2 *events.Events) int64 {
+						processors.Sum(func(events2 events.Events) int64 {
 							output := int64(0)
 							for _, es := range events2.Data() {
 								output += es.Data.(int64)
 							}
 							return output
 						}),
-						processors.Sum(func(events2 *events.Events) int64 {
+						processors.Sum(func(events2 events.Events) int64 {
 							output := int64(0)
 							for _, es := range events2.Data() {
 								output += es.Data.(int64)
 							}
 							return output
 						}),
-						processors.Sum(func(events2 *events.Events) int64 {
+						processors.Sum(func(events2 events.Events) int64 {
 							output := int64(0)
 							for _, es := range events2.Data() {
 								output += es.Data.(int64)
 							}
 							return output
 						}),
-						processors.Sum(func(events2 *events.Events) int64 {
+						processors.Sum(func(events2 events.Events) int64 {
 							output := int64(0)
 							for _, es := range events2.Data() {
 								output += es.Data.(int64)
@@ -170,7 +170,7 @@ func TestPipeline_RunAggSum(t *testing.T) {
 				input: st.Input,
 				processors: [][]processors.Processor{
 					{
-						processors.Sum(func(events2 *events.Events) int64 {
+						processors.Sum(func(events2 events.Events) int64 {
 							output := int64(0)
 							for _, es := range events2.Data() {
 								output += es.Data.(int64)
@@ -179,7 +179,7 @@ func TestPipeline_RunAggSum(t *testing.T) {
 						}),
 					},
 					{
-						processors.Sum(func(events2 *events.Events) int64 {
+						processors.Sum(func(events2 events.Events) int64 {
 							output := int64(0)
 							for _, es := range events2.Data() {
 								output += es.Data.(int64)
@@ -198,37 +198,21 @@ func TestPipeline_RunAggSum(t *testing.T) {
 				input: st.Input,
 				processors: [][]processors.Processor{
 					{
-						processors.Sum(func(events2 *events.Events) int64 {
+						processors.Sum(func(events2 events.Events) int64 {
 							output := int64(0)
 							for _, es := range events2.Data() {
 								output += es.Data.(int64)
 							}
 							return output
 						}),
-						processors.Sum(func(events2 *events.Events) int64 {
+						processors.Sum(func(events2 events.Events) int64 {
 							output := int64(0)
 							for _, es := range events2.Data() {
 								output += es.Data.(int64)
 							}
 							return output
 						}),
-						processors.Sum(func(events2 *events.Events) int64 {
-							output := int64(0)
-							for _, es := range events2.Data() {
-								output += es.Data.(int64)
-							}
-							return output
-						}),
-					},
-					{
-						processors.Sum(func(events2 *events.Events) int64 {
-							output := int64(0)
-							for _, es := range events2.Data() {
-								output += es.Data.(int64)
-							}
-							return output
-						}),
-						processors.Sum(func(events2 *events.Events) int64 {
+						processors.Sum(func(events2 events.Events) int64 {
 							output := int64(0)
 							for _, es := range events2.Data() {
 								output += es.Data.(int64)
@@ -237,7 +221,23 @@ func TestPipeline_RunAggSum(t *testing.T) {
 						}),
 					},
 					{
-						processors.Sum(func(events2 *events.Events) int64 {
+						processors.Sum(func(events2 events.Events) int64 {
+							output := int64(0)
+							for _, es := range events2.Data() {
+								output += es.Data.(int64)
+							}
+							return output
+						}),
+						processors.Sum(func(events2 events.Events) int64 {
+							output := int64(0)
+							for _, es := range events2.Data() {
+								output += es.Data.(int64)
+							}
+							return output
+						}),
+					},
+					{
+						processors.Sum(func(events2 events.Events) int64 {
 							output := int64(0)
 							for _, es := range events2.Data() {
 								output += es.Data.(int64)
@@ -292,7 +292,7 @@ func TestPipeline_RunAggCount(t *testing.T) {
 				input: st.Input,
 				processors: [][]processors.Processor{
 					{
-						processors.Count(func(events2 *events.Events) int64 {
+						processors.Count(func(events2 events.Events) int64 {
 							output := int64(0)
 							for range events2.Data() {
 								output += 1
@@ -311,35 +311,35 @@ func TestPipeline_RunAggCount(t *testing.T) {
 				input: st.Input,
 				processors: [][]processors.Processor{
 					{
-						processors.Count(func(events2 *events.Events) int64 {
+						processors.Count(func(events2 events.Events) int64 {
 							output := int64(0)
 							for range events2.Data() {
 								output += 1
 							}
 							return output
 						}),
-						processors.Count(func(events2 *events.Events) int64 {
+						processors.Count(func(events2 events.Events) int64 {
 							output := int64(0)
 							for range events2.Data() {
 								output += 1
 							}
 							return output
 						}),
-						processors.Count(func(events2 *events.Events) int64 {
+						processors.Count(func(events2 events.Events) int64 {
 							output := int64(0)
 							for range events2.Data() {
 								output += 1
 							}
 							return output
 						}),
-						processors.Count(func(events2 *events.Events) int64 {
+						processors.Count(func(events2 events.Events) int64 {
 							output := int64(0)
 							for range events2.Data() {
 								output += 1
 							}
 							return output
 						}),
-						processors.Count(func(events2 *events.Events) int64 {
+						processors.Count(func(events2 events.Events) int64 {
 							output := int64(0)
 							for range events2.Data() {
 								output += 1

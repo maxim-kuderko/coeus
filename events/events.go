@@ -1,7 +1,8 @@
 package events
 
 type Event struct {
-	Data interface{}
+	Data     interface{}
+	Metadata interface{}
 }
 
 type Events struct {

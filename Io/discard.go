@@ -5,21 +5,17 @@ import (
 )
 
 type Discard struct {
+	errs chan<- error
 }
 
-func (d *Discard) Store(events chan *events.Events) chan error {
-	errs := make(chan error)
-	go func() {
-		defer close(errs)
-		for e := range events {
-			if err := e.Ack(); err != nil {
-				errs <- err
-			}
+func (d *Discard) Store(events chan *events.Events) {
+	for e := range events {
+		if err := e.Ack(); err != nil {
+			d.errs <- err
 		}
-	}()
-	return errs
+	}
 }
 
-func NewDiscard() *Discard {
-	return &Discard{}
+func NewDiscard(errs chan<- error) *Discard {
+	return &Discard{errs: errs}
 }
