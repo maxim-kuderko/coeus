@@ -4,15 +4,17 @@ import (
 	"github.com/maxim-kuderko/coeus/events"
 )
 
-func Sum(summer func(events2 *events.Events) float64) func(es chan *events.Events) chan *events.Events {
+func Avg(summer func(events2 *events.Events) float64) func(es chan *events.Events) chan *events.Events {
 	return func(es chan *events.Events) chan *events.Events {
 		output := make(chan *events.Events)
 		sum := float64(0)
+		count := float64(0)
 		go func() {
 			defer close(output)
 			acks := make([]func() error, 0)
 			for e := range es {
 				sum += summer(e)
+				count++
 				acks = append(acks, e.Ack)
 			}
 			output <- events.NewEvents(func() error {
@@ -22,7 +24,7 @@ func Sum(summer func(events2 *events.Events) float64) func(es chan *events.Event
 					}
 				}
 				return nil
-			}, []*events.Event{{Data: sum}})
+			}, []*events.Event{{Data: sum / count}})
 		}()
 		return output
 	}

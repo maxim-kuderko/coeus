@@ -24,18 +24,18 @@ func main() {
 	p := coeus.NewPipeline(Io.NewSqs(ctx, errs, &Io.SqsOpt{
 		Region:   os.Getenv(`AWS_REGION`),
 		Endpoint: os.Getenv(`SQS_INPUT`),
-		Timeout:  time.Second,
-		Count:    10,
+		Timeout:  time.Millisecond * 100,
+		Count:    1,
 	}).Input, [][]processors.Processor{
 		{
 			sqsParse(errs),
-			sqsParse(errs),
-			sqsParse(errs),
-			sqsParse(errs),
-			sqsParse(errs),
-			sqsParse(errs),
 		},
 		{
+			sqsProcessor(errs),
+			sqsProcessor(errs),
+			sqsProcessor(errs),
+			sqsProcessor(errs),
+			sqsProcessor(errs),
 			sqsProcessor(errs),
 			sqsProcessor(errs),
 			sqsProcessor(errs),
@@ -63,15 +63,14 @@ func sqsParse(errs chan error) func(eventsChan chan *events.Events) chan *events
 		go func() {
 			defer close(output)
 			for es := range eventsChan {
-				for _, e := range es.Data() {
-					var tmp S3SqsEvent
-					if err := jsoniter.ConfigFastest.Unmarshal(e.Data.([]byte), &tmp); err != nil {
-						errs <- err
-						continue
-					}
+				var tmp S3SqsEvent
+				if err := jsoniter.ConfigFastest.Unmarshal(es.Data()[0].Data.([]byte), &tmp); err != nil {
+					errs <- err
+					continue
+				} /*
 					t, _ := time.Parse(time.RFC3339, tmp.WrittenAt)
-					fmt.Println(`time since sqs sent`, time.Since(t).Milliseconds())
-
+					fmt.Println(`time since sqs sent`, time.Since(t).Milliseconds())*/
+				for _, e := range es.Data() {
 					e.Data = tmp
 				}
 				output <- es
@@ -81,22 +80,16 @@ func sqsParse(errs chan error) func(eventsChan chan *events.Events) chan *events
 	}
 }
 
-var dedupe = map[string]bool{}
-
 func sqsProcessor(errs chan error) func(eventsChan chan *events.Events) chan *events.Events {
 	return func(eventsChan chan *events.Events) chan *events.Events {
 		output := make(chan *events.Events)
-		dedupe := map[string]bool{}
 		go func() {
 			defer close(output)
 			for es := range eventsChan {
 				for _, e := range es.Data() {
 					file := e.Data.(S3SqsEvent).Records[0]
-					if ok := dedupe[file.S3.Object.Key]; !ok {
-						/*if err := processFile(file.AwsRegion, file.S3.Bucket.Name, file.S3.Object.Key, errs); err != nil {
-							errs <- err
-						}*/
-						dedupe[file.S3.Object.Key] = true
+					if err := processFile(file.AwsRegion, file.S3.Bucket.Name, file.S3.Object.Key, errs); err != nil {
+						errs <- err
 					}
 
 				}
@@ -125,15 +118,10 @@ func processFile(region, bucket, key string, errs chan<- error) error {
 				processS3File,
 				processS3File,
 				processS3File,
-				processS3File,
-				processS3File,
-				processS3File,
-				processS3File,
-				processS3File,
 			},
 			{
-				processors.Count(func(events2 *events.Events) int64 {
-					return int64(len(events2.Data()))
+				processors.Avg(func(events2 *events.Events) float64 {
+					return float64(events2.Data()[0].Data.(int64))
 				}),
 			},
 		},
@@ -162,22 +150,15 @@ func processS3File(eeee chan *events.Events) chan *events.Events {
 	output := make(chan *events.Events)
 	go func(eventsChannel chan *events.Events) {
 		defer close(output)
-		t := int64(0)
-		c := int64(0)
 		for es := range eventsChannel {
-			for _, e := range es.Data() {
-				var tmp Event
-				if err := jsoniter.ConfigFastest.Unmarshal(e.Data.([]byte), &tmp); err != nil {
-					continue
-				}
-				elapsedTime, _ := time.Parse(time.RFC3339, tmp.Metadata.WrittenAt)
-				t += time.Now().Sub(elapsedTime).Milliseconds()
-				c++
-				e.Data = tmp
+			var tmp Event
+			if err := jsoniter.ConfigFastest.Unmarshal(es.Data()[0].Data.([]byte), &tmp); err != nil {
+				continue
 			}
-			output <- es
+			elapsedTime, _ := time.Parse(time.RFC3339, tmp.Metadata.WrittenAt)
+			t := time.Now().Sub(elapsedTime).Milliseconds()
+			output <- events.NewEvents(es.Ack, []*events.Event{{Data: t}})
 		}
-		fmt.Println(`avg latency: `, float64(t)/float64(c))
 	}(eeee)
 	return output
 }
