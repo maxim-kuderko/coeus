@@ -59,7 +59,7 @@ func (s *Sqs) Input() chan *events.Events {
 				for _, e := range resp.Messages {
 					es = append(es, &events.Event{
 						Data:     []byte(*e.Body),
-						Metadata: *e.MD5OfBody,
+						Metadata: e.Attributes,
 					})
 					msgsAckIds = append(msgsAckIds, &sqs.DeleteMessageBatchRequestEntry{
 						Id:            e.MessageId,

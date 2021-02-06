@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/maxim-kuderko/coeus"
@@ -33,8 +32,16 @@ func main() {
 			sqsParse(errs),
 			sqsParse(errs),
 			sqsParse(errs),
+			sqsParse(errs),
+			sqsParse(errs),
 		},
 		{
+			sqsProcessor(errs),
+			sqsProcessor(errs),
+			sqsProcessor(errs),
+			sqsProcessor(errs),
+			sqsProcessor(errs),
+			sqsProcessor(errs),
 			sqsProcessor(errs),
 		},
 	}, Io.NewDiscard(errs).Store)
@@ -62,6 +69,9 @@ func sqsParse(errs chan error) func(eventsChan chan *events.Events) chan *events
 						errs <- err
 						continue
 					}
+					t, _ := time.Parse(time.RFC3339, tmp.WrittenAt)
+					fmt.Println(`time since sqs sent`, time.Since(t).Milliseconds())
+
 					e.Data = tmp
 				}
 				output <- es
@@ -83,9 +93,9 @@ func sqsProcessor(errs chan error) func(eventsChan chan *events.Events) chan *ev
 				for _, e := range es.Data() {
 					file := e.Data.(S3SqsEvent).Records[0]
 					if ok := dedupe[file.S3.Object.Key]; !ok {
-						if err := processFile(file.AwsRegion, file.S3.Bucket.Name, file.S3.Object.Key, errs); err != nil {
+						/*if err := processFile(file.AwsRegion, file.S3.Bucket.Name, file.S3.Object.Key, errs); err != nil {
 							errs <- err
-						}
+						}*/
 						dedupe[file.S3.Object.Key] = true
 					}
 
@@ -133,7 +143,8 @@ func processFile(region, bucket, key string, errs chan<- error) error {
 }
 
 type S3SqsEvent struct {
-	Records []struct {
+	WrittenAt string `json:"written_at"`
+	Records   []struct {
 		AwsRegion string `json:"awsRegion"`
 		S3        struct {
 			Bucket struct {
@@ -172,9 +183,7 @@ func processS3File(eeee chan *events.Events) chan *events.Events {
 }
 
 type Event struct {
-	RawData    json.RawMessage `json:"raw_data"`
-	Enrichment Enrichment      `json:"enrichment"`
-	Metadata   Metadata        `json:"metadata"`
+	Metadata Metadata `json:"metadata"`
 }
 
 type Enrichment struct {
@@ -183,5 +192,4 @@ type Enrichment struct {
 
 type Metadata struct {
 	WrittenAt string
-	RequestID string
 }

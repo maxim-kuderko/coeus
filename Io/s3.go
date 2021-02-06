@@ -3,12 +3,14 @@ package Io
 import (
 	"bufio"
 	"compress/gzip"
+	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/maxim-kuderko/coeus/events"
 	"io"
 	"runtime"
+	"time"
 )
 
 type S3 struct {
@@ -37,6 +39,10 @@ func (s *S3) Input() chan *events.Events {
 	output := make(chan *events.Events, n)
 	go func() {
 		defer close(output)
+		t := time.Now()
+		defer func() {
+			fmt.Println("file read time took:", time.Since(t))
+		}()
 		obj, err := s3.New(s.sess).GetObject(&s3.GetObjectInput{
 			Bucket: aws.String(s.opt.Bucket),
 			Key:    aws.String(s.opt.Path),
