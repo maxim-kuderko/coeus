@@ -27,23 +27,15 @@ func main() {
 		Endpoint: os.Getenv(`SQS_INPUT`),
 		Timeout:  time.Millisecond * 100,
 		Count:    1,
-	}).Input, [][]processors.Processor{
+	}).Input, []processors.Processor{
 		{
+
 			sqsParse(errs),
+			8,
 		},
 		{
 			sqsProcessor(errs),
-			sqsProcessor(errs),
-			sqsProcessor(errs),
-			sqsProcessor(errs),
-			sqsProcessor(errs),
-			sqsProcessor(errs),
-			sqsProcessor(errs),
-			sqsProcessor(errs),
-			sqsProcessor(errs),
-			sqsProcessor(errs),
-			sqsProcessor(errs),
-			sqsProcessor(errs),
+			8,
 		},
 	}, Io.NewDiscard(errs).Store)
 	go func() {
@@ -110,13 +102,56 @@ func processFile(region, bucket, key string, errs chan<- error) error {
 		Path:   unescapedUrl,
 		Reader: Io.NewlineGzipReader,
 	}).Input,
-		[][]processors.Processor{
+		[]processors.Processor{
 			{
 				processS3File,
-				processS3File,
-				processS3File,
-				processS3File,
-				processS3File,
+				8,
+			},
+			{
+				Func: func(eventsChan chan *events.Events) chan *events.Events {
+					output := make(chan *events.Events)
+					agg := map[string]*struct {
+						E     Event
+						Count int
+					}{}
+					acks := make([]func() error, 0)
+					go func() {
+						defer close(output)
+						for es := range eventsChan {
+							acks = append(acks, es.Ack)
+							for _, e := range es.Data() {
+								d := e.Data.(Event)
+								key := d.Data[`customer_id`] + d.Data[`campign`] + d.Data[`action`] + d.Data[`user_id`]
+								v, ok := agg[key]
+								if !ok {
+									v = &struct {
+										E     Event
+										Count int
+									}{E: d, Count: 1}
+									agg[key] = v
+									continue
+								}
+								v.Count++
+							}
+						}
+						es := make([]*events.Event, 0, len(agg))
+						for _, v := range agg {
+							es = append(es, &events.Event{
+								Data: v,
+							})
+						}
+						output <- events.NewEvents(func() error {
+							for _, ack := range acks {
+								if err := ack(); err != nil {
+									return err
+								}
+							}
+							return nil
+						}, es)
+					}()
+					return output
+				},
+				Concurrency: 8,
 			},
 			{
 				func(eventsChan chan *events.Events) chan *events.Events {
@@ -125,8 +160,11 @@ func processFile(region, bucket, key string, errs chan<- error) error {
 						defer close(output)
 						for es := range eventsChan {
 							for _, e := range es.Data() {
-								//ts, _ := time.Parse(time.RFC3339, e.Data.(Event).Metadata.WrittenAt)
-								e.Data = write.NewPoint(`events`, e.Data.(Event).Data, map[string]interface{}{`count`: 1}, time.Now())
+								parsed := e.Data.(*struct {
+									E     Event
+									Count int
+								})
+								e.Data = write.NewPoint(`events`, parsed.E.Data, map[string]interface{}{`count`: parsed.Count}, time.Now())
 							}
 							output <- es
 						}
@@ -134,6 +172,7 @@ func processFile(region, bucket, key string, errs chan<- error) error {
 
 					return output
 				},
+				8,
 			},
 		},
 		Io.NewInfluxDB(errs, &Io.InfluxDBOpt{
