@@ -3,7 +3,6 @@ RUN  apk add git
 ADD . /go/src/github.com/maxim-kuderko/coeus
 
 WORKDIR /go/src/github.com/maxim-kuderko/coeus/cmd
-
 RUN  go get ./... && go build -o coeus main.go
 
 FROM alpine:latest

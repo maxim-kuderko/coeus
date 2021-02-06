@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/influxdata/influxdb-client-go/api/write"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/maxim-kuderko/coeus"
 	"github.com/maxim-kuderko/coeus/Io"
@@ -63,14 +64,12 @@ func sqsParse(errs chan error) func(eventsChan chan *events.Events) chan *events
 		go func() {
 			defer close(output)
 			for es := range eventsChan {
-				var tmp S3SqsEvent
-				if err := jsoniter.ConfigFastest.Unmarshal(es.Data()[0].Data.([]byte), &tmp); err != nil {
-					errs <- err
-					continue
-				} /*
-					t, _ := time.Parse(time.RFC3339, tmp.WrittenAt)
-					fmt.Println(`time since sqs sent`, time.Since(t).Milliseconds())*/
 				for _, e := range es.Data() {
+					var tmp S3SqsEvent
+					if err := jsoniter.ConfigFastest.Unmarshal(es.Data()[0].Data.([]byte), &tmp); err != nil {
+						errs <- err
+						continue
+					}
 					e.Data = tmp
 				}
 				output <- es
@@ -120,12 +119,30 @@ func processFile(region, bucket, key string, errs chan<- error) error {
 				processS3File,
 			},
 			{
-				processors.Avg(func(events2 *events.Events) float64 {
-					return float64(events2.Data()[0].Data.(int64))
-				}),
+				func(eventsChan chan *events.Events) chan *events.Events {
+					output := make(chan *events.Events)
+					go func() {
+						defer close(output)
+						for es := range eventsChan {
+							for _, e := range es.Data() {
+								//ts, _ := time.Parse(time.RFC3339, e.Data.(Event).Metadata.WrittenAt)
+								e.Data = write.NewPoint(`events`, e.Data.(Event).Data, map[string]interface{}{`count`: 1}, time.Now())
+							}
+							output <- es
+						}
+					}()
+
+					return output
+				},
 			},
 		},
-		Io.NewStdOut(errs).Output)
+		Io.NewInfluxDB(errs, &Io.InfluxDBOpt{
+			Endpoint: "http://localhost:8086",
+			Token:    "jZaceKailVqqnFNVnazmWVV9bFlNFfRc9xiXIX_xrW4UODSPBO_c1lWFq7hV3JbkW33UTXzeYJyW7Vj51vbe7Q==",
+			Org:      "org",
+			Bucket:   "bucket",
+			Timeout:  time.Millisecond * 500,
+		}).Output)
 	p.Run()
 	return nil
 }
@@ -151,20 +168,23 @@ func processS3File(eeee chan *events.Events) chan *events.Events {
 	go func(eventsChannel chan *events.Events) {
 		defer close(output)
 		for es := range eventsChannel {
-			var tmp Event
-			if err := jsoniter.ConfigFastest.Unmarshal(es.Data()[0].Data.([]byte), &tmp); err != nil {
-				continue
+			for _, e := range es.Data() {
+				var tmp Event
+				if err := jsoniter.ConfigFastest.Unmarshal(e.Data.([]byte), &tmp); err != nil {
+					continue
+				}
+				e.Data = tmp
 			}
-			elapsedTime, _ := time.Parse(time.RFC3339, tmp.Metadata.WrittenAt)
-			t := time.Now().Sub(elapsedTime).Milliseconds()
-			output <- events.NewEvents(es.Ack, []*events.Event{{Data: t}})
+
+			output <- es
 		}
 	}(eeee)
 	return output
 }
 
 type Event struct {
-	Metadata Metadata `json:"metadata"`
+	Metadata Metadata          `json:"metadata"`
+	Data     map[string]string `json:"raw_data"`
 }
 
 type Enrichment struct {
