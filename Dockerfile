@@ -1,13 +1,14 @@
-FROM golang:1-alpine
-RUN  apk add git
+FROM golang:1-buster
+#RUN  apk add git gcc-go
 ADD . /go/src/github.com/maxim-kuderko/coeus
 
 WORKDIR /go/src/github.com/maxim-kuderko/coeus/cmd
-RUN  go get ./... && go build -o coeus main.go
+ENV CGO_ENABLED=1
+RUN  go get  ./... && go  build -o coeus ./...
 
-FROM alpine:latest
+FROM debian:latest
 
-RUN apk --no-cache add ca-certificates
+#RUN apk --no-cache add ca-certificates
 WORKDIR /root/
 COPY --from=0 /go/src/github.com/maxim-kuderko/coeus/cmd/coeus .
 EXPOSE 8080

@@ -3,8 +3,8 @@ package Io
 import (
 	"context"
 	"fmt"
+	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/maxim-kuderko/coeus/events"
-	"gopkg.in/confluentinc/confluent-kafka-go.v1/kafka"
 	"strings"
 	"time"
 )
@@ -34,13 +34,12 @@ func (k *Kakfa) Output(events chan *events.Events) {
 
 func (k *Kakfa) Input() chan *events.Events {
 	c, err := kafka.NewConsumer(&kafka.ConfigMap{
-		"bootstrap.servers":               k.opt.BootstrapServers,
-		"group.id":                        k.opt.ConsumerGroupID,
-		"broker.address.family":           "v4",
-		"auto.offset.reset":               k.opt.DefaultOffset,
-		"go.events.channel.enable":        true,
-		"go.application.rebalance.enable": true,
-		"session.timeout.ms":              int(1000),
+		"bootstrap.servers":     k.opt.BootstrapServers,
+		"group.id":              k.opt.ConsumerGroupID,
+		"broker.address.family": "v4",
+		"auto.offset.reset":     k.opt.DefaultOffset,
+		"enable.auto.commit":    false,
+		//"session.timeout.ms":              int(600),
 	})
 	if err != nil {
 		panic(err)
@@ -72,7 +71,8 @@ func (k *Kakfa) Input() chan *events.Events {
 			case <-k.ctx.Done():
 				fmt.Printf("closing kafka consumer")
 				return
-			case ev := <-c.Events():
+			default:
+				ev := c.Poll(1000)
 				if ev == nil {
 					continue
 				}
