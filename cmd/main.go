@@ -22,7 +22,7 @@ func main() {
 
 	p := coeus.NewPipeline(Io.NewKafka(ctx, errs, &Io.KafkaOpt{
 		BootstrapServers: os.Getenv(`KAFKA_BOOTSTRAP_SERVERS`),
-		ConsumerGroupID:  `TEST2`,
+		ConsumerGroupID:  os.Getenv(`CONSUMER_GROUP_ID`),
 		ReadTimeout:      time.Millisecond * 5000,
 		DefaultOffset:    `earliest`,
 		Topics:           os.Getenv(`TOPICS`),
