@@ -56,14 +56,7 @@ func (k *Kakfa) Input() chan *events.Events {
 		buffer := make([]*events.Event, 0, k.opt.Batch)
 		defer func() {
 			if len(buffer) > 0 {
-				output <- events.NewEvents(func() error {
-					tmp := make([]kafka.TopicPartition, 0, len(buffer))
-					for _, msg := range buffer {
-						tmp = append(tmp, msg.Metadata.(kafka.TopicPartition))
-					}
-					_, err := c.CommitOffsets(tmp)
-					return err
-				}, buffer)
+				output <- events.NewEvents(k.ackFnBuilder(buffer, c), buffer)
 			}
 		}()
 		for run {
@@ -72,7 +65,7 @@ func (k *Kakfa) Input() chan *events.Events {
 				fmt.Printf("closing kafka consumer")
 				return
 			default:
-				ev := c.Poll(1000)
+				ev := c.Poll(2000)
 				if ev == nil {
 					continue
 				}
@@ -83,14 +76,8 @@ func (k *Kakfa) Input() chan *events.Events {
 						Metadata: e.TopicPartition,
 					})
 					if len(buffer) == k.opt.Batch {
-						output <- events.NewEvents(func() error {
-							tmp := make([]kafka.TopicPartition, 0, len(buffer))
-							for _, msg := range buffer {
-								tmp = append(tmp, msg.Metadata.(kafka.TopicPartition))
-							}
-							_, err := c.CommitOffsets(tmp)
-							return err
-						}, buffer)
+						ackFn := k.ackFnBuilder(buffer, c)
+						output <- events.NewEvents(ackFn, buffer)
 						buffer = make([]*events.Event, 0, k.opt.Batch)
 					}
 				case kafka.Error:
@@ -106,4 +93,30 @@ func (k *Kakfa) Input() chan *events.Events {
 		}
 	}()
 	return output
+}
+
+func (k *Kakfa) ackFnBuilder(buffer []*events.Event, c *kafka.Consumer) func() error {
+	return func() error {
+
+		perPart := map[int]kafka.TopicPartition{}
+		for _, msg := range buffer {
+			v, ok := perPart[int(msg.Metadata.(kafka.TopicPartition).Partition)]
+			if !ok {
+				perPart[int(msg.Metadata.(kafka.TopicPartition).Partition)] = msg.Metadata.(kafka.TopicPartition)
+				continue
+			}
+			if v.Offset < msg.Metadata.(kafka.TopicPartition).Offset {
+				perPart[int(msg.Metadata.(kafka.TopicPartition).Partition)] = msg.Metadata.(kafka.TopicPartition)
+			}
+		}
+		tmp := make([]kafka.TopicPartition, 0, len(buffer))
+		for _, topic := range perPart {
+			tmp = append(tmp, topic)
+		}
+		oo, err := c.CommitOffsets(tmp)
+		if err != nil && len(oo) > 0 {
+			fmt.Println(oo[0].Partition, `   offset: `, oo[0].Offset)
+		}
+		return err
+	}
 }

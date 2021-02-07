@@ -32,7 +32,7 @@ func main() {
 			processKafkaMsgs,
 			1,
 		},
-	}, Io.NewStdOut(errs).Output)
+	}, Io.NewDiscard(errs).Output)
 	go func() {
 		for err := range errs {
 			fmt.Println(err)
