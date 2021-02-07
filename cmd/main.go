@@ -22,22 +22,14 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	errs := make(chan error, 100)
 
-	p := coeus.NewPipeline(Io.NewSqs(ctx, errs, &Io.SqsOpt{
-		Region:   os.Getenv(`AWS_REGION`),
-		Endpoint: os.Getenv(`SQS_INPUT`),
-		Timeout:  time.Millisecond * 100,
-		Count:    1,
-	}).Input, []processors.Processor{
-		{
-
-			sqsParse(errs),
-			8,
-		},
-		{
-			sqsProcessor(errs),
-			8,
-		},
-	}, Io.NewDiscard(errs).Store)
+	p := coeus.NewPipeline(Io.NewKafka(ctx, errs, &Io.KafkaOpt{
+		BootstrapServers: os.Getenv(`KAFKA_BOOTSTRAP_SERVERS`),
+		ConsumerGroupID:  `TEST1`,
+		ReadTimeout:      time.Millisecond * 1000,
+		DefaultOffset:    `earliest`,
+		Topics:           os.Getenv(`TOPICS`),
+		Batch:            5,
+	}).Input, []processors.Processor{}, Io.NewStdOut(errs).Output)
 	go func() {
 		for err := range errs {
 			fmt.Println(err)
