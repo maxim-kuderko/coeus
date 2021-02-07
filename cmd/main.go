@@ -51,6 +51,7 @@ func processKafkaMsgs(eventsChan chan *events.Events) chan *events.Events {
 		defer close(output)
 		for es := range eventsChan {
 			for _, e := range es.Data() {
+				fmt.Println(e.Metadata.(kafka.TopicPartition).Partition, "  offset   ", e.Metadata.(kafka.TopicPartition).Offset)
 				e.Data = string(e.Data.(*kafka.Message).Value)
 			}
 			output <- es

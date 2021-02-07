@@ -65,8 +65,12 @@ func (k *Kakfa) Input() chan *events.Events {
 				fmt.Printf("closing kafka consumer")
 				return
 			default:
-				ev := c.Poll(2000)
+				ev := c.Poll(100)
 				if ev == nil {
+					if len(buffer) > 0 {
+						output <- events.NewEvents(k.ackFnBuilder(buffer, c), buffer)
+						buffer = make([]*events.Event, 0, k.opt.Batch)
+					}
 					continue
 				}
 				switch e := ev.(type) {
