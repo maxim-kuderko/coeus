@@ -2,7 +2,6 @@ package Io
 
 import (
 	"database/sql"
-	_ "github.com/ClickHouse/clickhouse-go"
 	"github.com/maxim-kuderko/coeus/events"
 	"sync"
 )

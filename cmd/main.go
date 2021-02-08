@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	_ "github.com/ClickHouse/clickhouse-go"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/maxim-kuderko/coeus"
 	"github.com/maxim-kuderko/coeus/Io"
@@ -22,6 +23,7 @@ func main() {
 	p := coeus.NewPipeline(sqsTos3File(ctx, errs),
 		[]processors.Processor{{processPlutosMsg, 8}},
 		Io.NewClickHouse(errs, &Io.SQLOpt{
+			Driver:         `clickhouse`,
 			Concurrency:    8,
 			Endpoint:       "tcp://localhost:9000",
 			InsertIntoStmt: "insert into default.ad_calls (request_id, customer_id, campaign, action, user_id, date, sent_at, written_at) values (?, ?, ?, ?, ?, ?, ?, ?) on duplicate key",
