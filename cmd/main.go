@@ -11,6 +11,7 @@ import (
 	"github.com/maxim-kuderko/coeus/processors"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -21,10 +22,10 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	errs := make(chan error, 100)
 	p := coeus.NewPipeline(sqsTos3File(ctx, errs),
-		[]processors.Processor{{processPlutosMsg, 8}},
+		[]processors.Processor{{processPlutosMsg, 16}},
 		Io.NewClickHouse(errs, &Io.SQLOpt{
 			Driver:         `clickhouse`,
-			Concurrency:    8,
+			Concurrency:    16,
 			Endpoint:       "tcp://localhost:9000",
 			InsertIntoStmt: "insert into default.ad_calls (request_id, customer_id, campaign, action, user_id, date, sent_at, written_at) values (?, ?, ?, ?, ?, ?, ?, ?) on duplicate key",
 			EventToValueFunc: func(event *events.Event) []interface{} {
@@ -77,11 +78,19 @@ func sqsTos3File(ctx context.Context, errs chan error) func() chan *events.Event
 					Bucket: sqsE.Records[0].S3.Bucket.Name,
 					Path:   sqsE.Records[0].S3.Object.Key,
 					Reader: Io.NewlineGzipReader,
-					Batch:  1000,
+					Batch:  10000,
 				}).Input()
+				wg := sync.WaitGroup{}
+				go func(msg *events.Events) {
+					wg.Wait()
+					if err := msg.Ack(); err != nil {
+						errs <- err
+					}
+				}(msg)
 				for e := range s3 {
 					output <- events.NewEvents(func() error {
-						return msg.Ack()
+						wg.Add(1)
+						return nil
 					}, e.Data())
 				}
 			}
