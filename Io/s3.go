@@ -8,7 +8,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/maxim-kuderko/coeus/events"
 	"io"
-	"runtime"
 )
 
 type S3 struct {
@@ -22,6 +21,8 @@ type S3Opt struct {
 	Bucket string
 	Path   string
 	Reader func(r io.Reader, metadata interface{}) <-chan *events.Event
+
+	Batch int
 }
 
 func NewS3(errs chan<- error, opt *S3Opt) *S3 {
@@ -33,8 +34,7 @@ func NewS3(errs chan<- error, opt *S3Opt) *S3 {
 }
 
 func (s *S3) Input() chan *events.Events {
-	n := runtime.NumCPU() * 2
-	output := make(chan *events.Events, n)
+	output := make(chan *events.Events, s.opt.Batch)
 	go func() {
 		defer close(output)
 		/*t := time.Now()
@@ -50,14 +50,14 @@ func (s *S3) Input() chan *events.Events {
 			return
 		}
 		defer obj.Body.Close()
-		buff := make([]*events.Event, 0, n)
+		buff := make([]*events.Event, 0, s.opt.Batch)
 		for e := range s.opt.Reader(obj.Body, map[string]string{`path`: s.opt.Path}) {
 			buff = append(buff, e)
-			if len(buff) == n {
+			if len(buff) == s.opt.Batch {
 				output <- events.NewEvents(func() error {
 					return nil
 				}, buff)
-				buff = make([]*events.Event, 0, n)
+				buff = make([]*events.Event, 0, s.opt.Batch)
 			}
 		}
 		if len(buff) > 0 {
