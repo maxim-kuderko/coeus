@@ -82,13 +82,14 @@ func readS3File(errs chan error, sqsE S3SqsEvent, output chan *events.Events, ms
 		Region: sqsE.Records[0].AwsRegion,
 		Bucket: sqsE.Records[0].S3.Bucket.Name,
 		Path:   sqsE.Records[0].S3.Object.Key,
-		Reader: Io.NewlineLZ4Reader,
+		Reader: Io.NewlineZSTDReader,
 		Batch:  10000,
 	}).Input()
 	wg := sync.WaitGroup{}
 	for e := range s3 {
+		wg.Add(1)
 		output <- events.NewEvents(func() error {
-			wg.Add(1)
+			wg.Done()
 			return nil
 		}, e.Data())
 	}
@@ -105,15 +106,19 @@ func processPlutosMsg(eventsChan chan *events.Events) chan *events.Events {
 	go func() {
 		defer close(output)
 		for es := range eventsChan {
+			ok := true
 			for _, e := range es.Data() {
 				var plutosEvent PlutosEvent
 				if err := jsoniter.ConfigFastest.Unmarshal(e.Data.([]byte), &plutosEvent); err != nil {
-					fmt.Println(err)
-					continue
+					fmt.Println(string(e.Data.([]byte)), err)
+					ok = false
+					break
 				}
 				e.Data = &plutosEvent
 			}
-			output <- es
+			if ok {
+				output <- es
+			}
 		}
 	}()
 	return output
@@ -121,10 +126,10 @@ func processPlutosMsg(eventsChan chan *events.Events) chan *events.Events {
 
 func eventToValues(event *events.Event) []interface{} {
 	pe := event.Data.(*PlutosEvent)
-	ts, _ := time.Parse(time.RFC3339Nano, pe.Metadata.WrittenAt)
+	ts, _ := time.Parse(time.RFC3339Nano, pe.WrittenAt)
 	t := time.Now()
 	output := make([]interface{}, 8)
-	output[0] = pe.Metadata.RequestID
+	output[0] = pe.RequestID
 	output[1] = pe.RawData[`customer_id`]
 	output[2] = pe.RawData[`campaign`]
 	output[3] = pe.RawData[`action`]
@@ -136,18 +141,9 @@ func eventToValues(event *events.Event) []interface{} {
 }
 
 type PlutosEvent struct {
-	RawData    map[string]string `json:"raw_data"`
-	Enrichment Enrichment        `json:"enrichment"`
-	Metadata   Metadata          `json:"metadata"`
-}
-
-type Enrichment struct {
-	Headers map[string]string `json:"headers"`
-}
-
-type Metadata struct {
-	WrittenAt string `json:"written_at"`
-	RequestID string `json:"request_id"`
+	RawData   map[string]string `json:"raw_data"`
+	WrittenAt string            `json:"written_at"`
+	RequestID string            `json:"request_id"`
 }
 
 type S3SqsEvent struct {
