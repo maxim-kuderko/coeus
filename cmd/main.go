@@ -11,6 +11,7 @@ import (
 	"github.com/maxim-kuderko/coeus/processors"
 	"os"
 	"os/signal"
+	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -24,8 +25,16 @@ func main() {
 	go handleErrors(errs)
 
 	go coeus.NewPipeline(
-		sqsTos3File(ctx, errs),
-		[]processors.Processor{{processPlutosMsg, 16}},
+		Io.NewSqs(ctx, errs, &Io.SqsOpt{
+			Region:   os.Getenv(`AWS_REGION`),
+			Endpoint: os.Getenv(`SQS_INPUT`),
+			Timeout:  time.Second,
+			Count:    1,
+		}).Input,
+		[]processors.Processor{
+			{sqsTos3File(errs), 1},
+			{processPlutosMsg, runtime.NumCPU()},
+		},
 		initClickhouse(errs).Output).Run()
 
 	<-c
@@ -50,18 +59,12 @@ func initClickhouse(errs chan error) *Io.SQL {
 	})
 }
 
-func sqsTos3File(ctx context.Context, errs chan error) func() chan *events.Events {
-	return func() chan *events.Events {
-		sqs := Io.NewSqs(ctx, errs, &Io.SqsOpt{
-			Region:   os.Getenv(`AWS_REGION`),
-			Endpoint: os.Getenv(`SQS_INPUT`),
-			Timeout:  time.Second,
-			Count:    1,
-		})
+func sqsTos3File(errs chan error) func(eventsChan chan *events.Events) chan *events.Events {
+	return func(eventsChan chan *events.Events) chan *events.Events {
 		output := make(chan *events.Events, 1000)
 		go func() {
 			defer close(output)
-			for msg := range sqs.Input() {
+			for msg := range eventsChan {
 				var sqsE S3SqsEvent
 				if err := jsoniter.ConfigFastest.Unmarshal(msg.Data()[0].Data.([]byte), &sqsE); err != nil {
 					errs <- err
@@ -70,9 +73,7 @@ func sqsTos3File(ctx context.Context, errs chan error) func() chan *events.Event
 				readS3File(errs, sqsE, output, msg)
 			}
 		}()
-
 		return output
-
 	}
 }
 
