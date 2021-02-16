@@ -82,7 +82,7 @@ func readS3File(errs chan error, sqsE S3SqsEvent, output chan *events.Events, ms
 		Region: sqsE.Records[0].AwsRegion,
 		Bucket: sqsE.Records[0].S3.Bucket.Name,
 		Path:   sqsE.Records[0].S3.Object.Key,
-		Reader: Io.NewlineZSTDReader,
+		Reader: Io.NewlineSnappyReader,
 		Batch:  10000,
 	}).Input()
 	wg := sync.WaitGroup{}

@@ -2,10 +2,10 @@ package Io
 
 import (
 	"bufio"
-	"compress/gzip"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/golang/snappy"
 	"github.com/maxim-kuderko/coeus/events"
 	"github.com/valyala/gozstd"
 	"io"
@@ -71,11 +71,11 @@ func (s *S3) Input() chan *events.Events {
 	return output
 }
 
-func NewlineGzipReader(r io.Reader, metadata interface{}) <-chan *events.Event {
+func NewlineSnappyReader(r io.Reader, metadata interface{}) <-chan *events.Event {
 	output := make(chan *events.Event, 2)
 	go func() {
 		defer close(output)
-		gr, _ := gzip.NewReader(r)
+		gr := snappy.NewReader(r)
 		b := bufio.NewReader(gr)
 		for {
 			data, err := b.ReadBytes('\n')
