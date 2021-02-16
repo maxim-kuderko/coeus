@@ -21,39 +21,33 @@ func main() {
 	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL)
 	ctx, cancel := context.WithCancel(context.Background())
 	errs := make(chan error, 100)
-	p := coeus.NewPipeline(sqsTos3File(ctx, errs),
+	go handleErrors(errs)
+
+	go coeus.NewPipeline(
+		sqsTos3File(ctx, errs),
 		[]processors.Processor{{processPlutosMsg, 16}},
-		Io.NewClickHouse(errs, &Io.SQLOpt{
-			Driver:         `clickhouse`,
-			Concurrency:    16,
-			Endpoint:       "tcp://localhost:9000",
-			InsertIntoStmt: "insert into default.ad_calls (request_id, customer_id, campaign, action, user_id, date, sent_at, written_at) values (?, ?, ?, ?, ?, ?, ?, ?) on duplicate key",
-			EventToValueFunc: func(event *events.Event) []interface{} {
-				pe := event.Data.(*PlutosEvent)
-				ts, _ := time.Parse(time.RFC3339, pe.Metadata.WrittenAt)
-				t := time.Now()
-				output := make([]interface{}, 8)
-				output[0] = pe.Metadata.RequestID
-				output[1] = pe.RawData[`customer_id`]
-				output[2] = pe.RawData[`campaign`]
-				output[3] = pe.RawData[`action`]
-				output[4] = pe.RawData[`user_id`]
-				output[5] = t
-				output[6] = ts
-				output[7] = t
-				return output
-			},
-			MaxRetries: 1,
-		}).Output)
-	go func() {
-		for err := range errs {
-			fmt.Println(err)
-		}
-	}()
-	go p.Run()
+		initClickhouse(errs).Output).Run()
+
 	<-c
 	cancel()
 
+}
+
+func handleErrors(errs chan error) {
+	for err := range errs {
+		fmt.Println(err)
+	}
+}
+
+func initClickhouse(errs chan error) *Io.SQL {
+	return Io.NewClickHouse(errs, &Io.SQLOpt{
+		Driver:           `clickhouse`,
+		Concurrency:      16,
+		Endpoint:         "tcp://localhost:9000",
+		InsertIntoStmt:   "insert into default.ad_calls (request_id, customer_id, campaign, action, user_id, date, sent_at, written_at) values (?, ?, ?, ?, ?, ?, ?, ?) on duplicate key",
+		EventToValueFunc: eventToValues,
+		MaxRetries:       1,
+	})
 }
 
 func sqsTos3File(ctx context.Context, errs chan error) func() chan *events.Events {
@@ -73,32 +67,36 @@ func sqsTos3File(ctx context.Context, errs chan error) func() chan *events.Event
 					errs <- err
 					continue
 				}
-				s3 := Io.NewS3(errs, &Io.S3Opt{
-					Region: sqsE.Records[0].AwsRegion,
-					Bucket: sqsE.Records[0].S3.Bucket.Name,
-					Path:   sqsE.Records[0].S3.Object.Key,
-					Reader: Io.NewlineGzipReader,
-					Batch:  10000,
-				}).Input()
-				wg := sync.WaitGroup{}
-				go func(msg *events.Events) {
-					wg.Wait()
-					if err := msg.Ack(); err != nil {
-						errs <- err
-					}
-				}(msg)
-				for e := range s3 {
-					output <- events.NewEvents(func() error {
-						wg.Add(1)
-						return nil
-					}, e.Data())
-				}
+				readS3File(errs, sqsE, output, msg)
 			}
 		}()
 
 		return output
 
 	}
+}
+
+func readS3File(errs chan error, sqsE S3SqsEvent, output chan *events.Events, msg *events.Events) {
+	s3 := Io.NewS3(errs, &Io.S3Opt{
+		Region: sqsE.Records[0].AwsRegion,
+		Bucket: sqsE.Records[0].S3.Bucket.Name,
+		Path:   sqsE.Records[0].S3.Object.Key,
+		Reader: Io.NewlineLZ4Reader,
+		Batch:  10000,
+	}).Input()
+	wg := sync.WaitGroup{}
+	for e := range s3 {
+		output <- events.NewEvents(func() error {
+			wg.Add(1)
+			return nil
+		}, e.Data())
+	}
+	go func(msg *events.Events) {
+		wg.Wait()
+		if err := msg.Ack(); err != nil {
+			errs <- err
+		}
+	}(msg)
 }
 
 func processPlutosMsg(eventsChan chan *events.Events) chan *events.Events {
@@ -112,7 +110,6 @@ func processPlutosMsg(eventsChan chan *events.Events) chan *events.Events {
 					fmt.Println(err)
 					continue
 				}
-
 				e.Data = &plutosEvent
 			}
 			output <- es
@@ -121,14 +118,26 @@ func processPlutosMsg(eventsChan chan *events.Events) chan *events.Events {
 	return output
 }
 
+func eventToValues(event *events.Event) []interface{} {
+	pe := event.Data.(*PlutosEvent)
+	ts, _ := time.Parse(time.RFC3339Nano, pe.Metadata.WrittenAt)
+	t := time.Now()
+	output := make([]interface{}, 8)
+	output[0] = pe.Metadata.RequestID
+	output[1] = pe.RawData[`customer_id`]
+	output[2] = pe.RawData[`campaign`]
+	output[3] = pe.RawData[`action`]
+	output[4] = pe.RawData[`user_id`]
+	output[5] = t
+	output[6] = ts
+	output[7] = t
+	return output
+}
+
 type PlutosEvent struct {
 	RawData    map[string]string `json:"raw_data"`
 	Enrichment Enrichment        `json:"enrichment"`
 	Metadata   Metadata          `json:"metadata"`
-}
-
-func (pe *PlutosEvent) aggKey() string {
-	return fmt.Sprintf("%s-%s-%s-%s", pe.RawData[`customer_id`], pe.RawData[`campaign`], pe.RawData[`action`], pe.RawData[`user_id`])
 }
 
 type Enrichment struct {

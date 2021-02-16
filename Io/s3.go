@@ -7,6 +7,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/maxim-kuderko/coeus/events"
+	lz4 "github.com/pierrec/lz4"
 	"io"
 )
 
@@ -75,6 +76,23 @@ func NewlineGzipReader(r io.Reader, metadata interface{}) <-chan *events.Event {
 	go func() {
 		defer close(output)
 		gr, _ := gzip.NewReader(r)
+		b := bufio.NewReader(gr)
+		for {
+			data, err := b.ReadBytes('\n')
+			if err != nil {
+				return
+			}
+			output <- &events.Event{Data: data, Metadata: metadata}
+		}
+	}()
+	return output
+}
+
+func NewlineLZ4Reader(r io.Reader, metadata interface{}) <-chan *events.Event {
+	output := make(chan *events.Event, 2)
+	go func() {
+		defer close(output)
+		gr := lz4.NewReader(r)
 		b := bufio.NewReader(gr)
 		for {
 			data, err := b.ReadBytes('\n')
