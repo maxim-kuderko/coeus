@@ -22,6 +22,7 @@ type KafkaOpt struct {
 	DefaultOffset    string
 	Topics           string
 	Batch            int
+	PollTime         int
 }
 
 func NewKafka(ctx context.Context, errs chan error, opt *KafkaOpt) *Kakfa {
@@ -65,7 +66,7 @@ func (k *Kakfa) Input() chan *events.Events {
 				fmt.Printf("closing kafka consumer")
 				return
 			default:
-				ev := c.Poll(2)
+				ev := c.Poll(k.opt.PollTime)
 				if ev == nil {
 					if len(buffer) > 0 {
 						output <- events.NewEvents(k.ackFnBuilder(buffer, c), buffer)
